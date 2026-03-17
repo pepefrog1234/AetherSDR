@@ -121,6 +121,7 @@ public:
     void setDiglOffset(int hz);
     void setDiguOffset(int hz);
     void setTxSlice(bool on);
+    void setActive(bool on);
 
     // Setters — FM duplex/repeater
     void setFmToneMode(const QString& mode);

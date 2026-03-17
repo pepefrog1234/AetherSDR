@@ -110,12 +110,28 @@ public:
     bool  wfAutoBlack() const          { return m_wfAutoBlack; }
     int   wfLineDuration() const       { return m_wfLineDuration; }
 
-    // Set slice info for the off-screen VFO indicator.
-    void setSliceInfo(int sliceId, bool isTxSlice) {
-        m_sliceId = sliceId; m_isTxSlice = isTxSlice;
-    }
+    // Set slice info for the off-screen VFO indicator (legacy single-slice).
+    void setSliceInfo(int sliceId, bool isTxSlice);
+
+    // ── Multi-slice overlay API ───────────────────────────────────────────
+    struct SliceOverlay {
+        int    sliceId{0};
+        double freqMhz{0};
+        int    filterLowHz{0};
+        int    filterHighHz{0};
+        bool   isTxSlice{false};
+        bool   isActive{false};
+    };
+
+    // Add or update a slice overlay (called per-slice on any state change).
+    void setSliceOverlay(int sliceId, double freq, int fLow, int fHigh,
+                         bool tx, bool active);
+    // Remove a slice overlay.
+    void removeSliceOverlay(int sliceId);
 
 signals:
+    // Emitted when user clicks on an inactive slice marker.
+    void sliceClicked(int sliceId);
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
     // Emitted when the user drags the frequency scale bar to change bandwidth.
@@ -139,11 +155,16 @@ protected:
 private:
     void drawGrid(QPainter& p, const QRect& r);
     void drawSpectrum(QPainter& p, const QRect& r);
-    void drawVfoMarker(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    void drawSliceMarkers(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    void drawOffScreenSlices(QPainter& p, const QRect& specRect);
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
     void drawDbmScale(QPainter& p, const QRect& specRect);
-    void drawOffScreenVfo(QPainter& p, const QRect& specRect);
+
+    // Helper: find overlay index for a sliceId, or -1.
+    int overlayIndex(int sliceId) const;
+    // Helper: find active overlay (or nullptr).
+    const SliceOverlay* activeOverlay() const;
 
     void pushWaterfallRow(const QVector<float>& bins, int destWidth,
                           double tileLowMhz = -1, double tileHighMhz = -1);
@@ -160,14 +181,13 @@ private:
 
     double m_centerMhz{14.225};
     double m_bandwidthMhz{0.200};
-    double m_vfoFreqMhz{14.225};
-    int    m_filterLowHz{-1500};   // Hz offset from VFO
-    int    m_filterHighHz{1500};   // Hz offset from VFO
-    int    m_filterMinHz{-12000};  // per-mode lower bound
-    int    m_filterMaxHz{12000};   // per-mode upper bound
-    QString m_mode{"USB"};         // current demod mode
-    int     m_sliceId{0};          // slice index (0=A, 1=B, etc.)
-    bool    m_isTxSlice{false};    // whether this is the TX slice
+
+    // Multi-slice overlays (replaces single m_vfoFreqMhz / m_filterLowHz / etc.)
+    QVector<SliceOverlay> m_sliceOverlays;
+
+    int    m_filterMinHz{-12000};  // per-mode lower bound (active slice)
+    int    m_filterMaxHz{12000};   // per-mode upper bound (active slice)
+    QString m_mode{"USB"};         // current demod mode (active slice)
 
     float m_refLevel{-50.0f};       // top of display (dBm)
     float m_dynamicRange{100.0f};   // dB range shown in spectrum (-50 to -150)
@@ -233,9 +253,9 @@ private:
     bool  m_draggingDbm{false};
     int   m_dbmDragStartY{0};
     float m_dbmDragStartRef{0.0f};
-    // Off-screen VFO indicator hit rect (for hover/double-click)
-    QRect m_offScreenVfoRect;
-    bool  m_hoveringOffScreenVfo{false};
+    // Off-screen slice indicator hit rects (parallel to m_sliceOverlays)
+    QVector<QRect> m_offScreenRects;
+    int  m_hoveringOffScreenIdx{-1};
 
     // On-screen indicators (WNB, RF Gain)
     bool m_wnbActive{false};
